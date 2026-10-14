@@ -1,0 +1,650 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mainframe Typer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=VT323&display=swap">
+<style>
+/* Layout: fullscreen fosfor-terminal; code-rain achter, code voor, statusbalk boven, bootscherm met kleurkeuze. Twee skins: groen (default) en amber. */
+:root {
+  --bg: #030a05;
+  --fg: #3dff66;
+  --fg-dim: #2aa84a;
+  --fg-faint: #124a24;
+  --accent: #7ee8ff;
+  --warn: #ffd166;
+  --panel: rgba(4, 24, 10, 0.88);
+  --glow: rgba(61, 255, 102, .5);
+  --glow-accent: rgba(126, 232, 255, .5);
+  --code-k: #b6ffc6;
+  --code-s: #d6ff9a;
+  --font-code: "IBM Plex Mono", "Fira Code", "Courier New", monospace;
+  --font-display: "VT323", "IBM Plex Mono", monospace;
+  color-scheme: dark;
+}
+body.amber {
+  --bg: #0c0700;
+  --fg: #ffb400;
+  --fg-dim: #c67f14;
+  --fg-faint: #5a3700;
+  --accent: #ff9d4d;
+  --warn: #ff5e3a;
+  --panel: rgba(26, 15, 2, 0.9);
+  --glow: rgba(255, 180, 0, .5);
+  --glow-accent: rgba(255, 157, 77, .5);
+  --code-k: #ffd98a;
+  --code-s: #ffe3a1;
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-code);
+  overflow: hidden;
+  cursor: text;
+  transition: background-color .3s ease, color .3s ease;
+}
+#rain {
+  position: fixed; inset: 0;
+  width: 100%; height: 100%;
+  opacity: .22;
+  pointer-events: none;
+}
+#scan {
+  position: fixed; inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(0,0,0,.18) 0 1px, transparent 1px 3px);
+  mix-blend-mode: multiply;
+}
+#vignette {
+  position: fixed; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 58%, rgba(0,0,0,.5) 100%);
+}
+
+/* statusbalk */
+#bar {
+  position: fixed; left: 0; right: 0; top: env(safe-area-inset-top, 0px);
+  display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center;
+  padding-block: 8px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  background: var(--panel);
+  border-bottom: 1px solid var(--fg-faint);
+  font-size: 12px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  z-index: 5;
+}
+#bar b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+#bar .host { color: var(--fg); }
+#bar .spacer { flex: 1; }
+#bar button, #bar input[type=range] { font: inherit; }
+#bar button {
+  background: transparent; color: var(--fg-dim);
+  border: 1px solid var(--fg-faint); border-radius: 2px;
+  padding: 3px 8px; cursor: pointer; text-transform: uppercase; letter-spacing: .06em;
+}
+#bar button:hover, #bar button:focus-visible { color: var(--fg); border-color: var(--fg-dim); outline: none; }
+#bar label { display: flex; align-items: center; gap: 6px; }
+#bar input[type=range] { width: 70px; accent-color: var(--fg); }
+
+/* code-gebied */
+#screen {
+  position: absolute; inset: 0;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 72px);
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 24px);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  overflow: hidden;
+  display: flex; flex-direction: column; justify-content: flex-end;
+}
+#out {
+  margin: 0;
+  font: 14px/1.5 var(--font-code);
+  white-space: pre-wrap;
+  word-break: break-word;
+  text-shadow: 0 0 7px var(--glow);
+  min-width: 0;
+}
+#out .c { color: var(--fg-dim); }
+#out .k { color: var(--code-k); font-weight: 600; }
+#out .s { color: var(--code-s); }
+#out .n { color: var(--accent); }
+#cur {
+  display: inline-block; width: .55em; height: 1.05em;
+  background: var(--fg); vertical-align: -0.15em;
+  box-shadow: 0 0 8px var(--fg);
+  animation: blink 1s steps(2) infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+
+/* bootscherm */
+#boot {
+  position: fixed; inset: 0; z-index: 8;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 16px; text-align: center;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,.35), rgba(0,0,0,.72));
+  transition: opacity .5s ease, visibility .5s ease;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+#boot.gone { opacity: 0; visibility: hidden; }
+#boot .eyebrow {
+  font-size: 13px; letter-spacing: .35em; text-transform: uppercase; color: var(--fg-dim);
+}
+#boot h1 {
+  font-family: var(--font-display);
+  font-size: clamp(52px, 13vw, 128px);
+  line-height: .82; margin: 0; color: var(--fg);
+  text-shadow: 0 0 28px var(--glow);
+  text-wrap: balance;
+}
+#boot .go {
+  font-family: var(--font-display);
+  font-size: clamp(22px, 4.5vw, 34px);
+  color: var(--accent);
+  text-shadow: 0 0 14px var(--glow-accent);
+}
+#boot .go b { animation: blink 1.1s steps(2) infinite; }
+#boot .sub { font-size: 14px; line-height: 1.5; letter-spacing: .02em; color: var(--fg-dim); max-width: 44ch; }
+#boot .diff { font-size: 11px; letter-spacing: .04em; color: var(--fg-dim); opacity: .8; max-width: 50ch; }
+#themeSwitch {
+  pointer-events: auto;
+  display: flex; align-items: center; gap: 8px; margin-top: 12px;
+  font-size: 12px; letter-spacing: .12em; text-transform: uppercase;
+}
+#themeSwitch .lbl { color: var(--fg-dim); }
+#themeSwitch button {
+  font: inherit; text-transform: uppercase; letter-spacing: .08em;
+  background: transparent; color: var(--fg-dim);
+  border: 1px solid var(--fg-faint); border-radius: 2px;
+  padding: 5px 14px; cursor: pointer;
+}
+#themeSwitch button:hover { color: var(--fg); border-color: var(--fg-dim); }
+#themeSwitch button[aria-pressed="true"] {
+  color: var(--bg); background: var(--fg); border-color: var(--fg);
+  text-shadow: none; font-weight: 600;
+}
+#btnStart {
+  pointer-events: auto; margin-top: 4px;
+  font-family: var(--font-display);
+  font-size: clamp(28px, 5vw, 42px); line-height: 1;
+  letter-spacing: .1em; text-transform: uppercase;
+  color: var(--bg); background: var(--fg);
+  border: none; border-radius: 3px;
+  padding: 8px 48px; cursor: pointer;
+  box-shadow: 0 0 26px var(--glow);
+  transition: filter .15s ease, transform .1s ease;
+}
+#btnStart:hover, #btnStart:focus-visible { filter: brightness(1.12); outline: none; }
+#btnStart:active { transform: translateY(1px); }
+
+#hint {
+  position: fixed; inset: 0; z-index: 7;
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  pointer-events: none; transition: opacity .5s ease;
+  font-family: var(--font-display); color: var(--accent);
+  text-shadow: 0 0 16px var(--glow-accent);
+}
+#hint.gone { opacity: 0; }
+#hint .t { font-size: clamp(30px, 6vw, 56px); }
+#hint b { font-size: clamp(30px, 6vw, 56px); animation: blink 1s steps(2) infinite; }
+
+/* toasts */
+#events {
+  position: fixed; right: max(16px, env(safe-area-inset-right, 0px));
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  display: flex; flex-direction: column; gap: 8px;
+  max-width: min(360px, calc(100vw - 32px));
+  z-index: 6; pointer-events: none;
+}
+.ev {
+  background: var(--panel); border: 1px solid var(--fg-dim);
+  padding: 8px 12px; font-size: 12px; letter-spacing: .03em;
+  box-shadow: 0 0 18px var(--glow);
+  animation: pop .25s ease-out;
+}
+.ev.warn { border-color: var(--warn); color: var(--warn); }
+.ev.cyan { border-color: var(--accent); color: var(--accent); }
+.ev .track { height: 6px; background: var(--fg-faint); margin-top: 6px; }
+.ev .fill { height: 100%; width: 0; background: currentColor; transition: width .12s linear; }
+@keyframes pop { from { transform: translateY(8px); opacity: 0; } }
+
+/* grote stempel */
+#verdict {
+  position: fixed; inset: 0; z-index: 10;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,.6);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+#verdict .stamp {
+  font-family: var(--font-display);
+  font-size: clamp(42px, 12vw, 130px);
+  line-height: .9; text-align: center;
+  padding: .2em .45em;
+  border: 4px solid currentColor;
+  text-shadow: 0 0 24px currentColor;
+  animation: flicker .12s 6 alternate;
+  text-wrap: balance;
+}
+#verdict.ok   { color: var(--fg); }
+#verdict.warn { color: var(--warn); }
+@keyframes flicker { from { opacity: .55; } to { opacity: 1; } }
+
+#sink {
+  position: fixed; left: -9999px; top: 0; width: 1px; height: 1px;
+  opacity: 0; font-size: 16px;
+  caret-color: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #cur, #verdict .stamp, .ev, #hint b { animation: none; }
+}
+@media (max-width: 520px) {
+  #out { font-size: 12px; }
+  #bar .net, #bar .pid { display: none; }
+}
+</style>
+</head>
+<body>
+<canvas id="rain"></canvas>
+<div id="scan"></div>
+<div id="vignette"></div>
+
+<div id="bar">
+  <span class="host">dev@mainframe-07</span>
+  <span class="pid">pid <b id="pid">2048</b></span>
+  <span>cpu <b id="cpu">12%</b></span>
+  <span>mem <b id="mem">4.1G</b></span>
+  <span class="net">build <b id="net">idle</b></span>
+  <span>uptime <b id="up">00:00:00</b></span>
+  <span class="spacer"></span>
+  <button id="btnBack" type="button" hidden>terug</button>
+  <label>snelheid <input type="range" id="speed" min="1" max="9" value="4"></label>
+  <button id="btnTheme" type="button">kleur</button>
+  <button id="btnOk" type="button">compile</button>
+  <button id="btnBad" type="button">deploy</button>
+  <button id="btnClr" type="button">wis</button>
+</div>
+
+<div id="screen"><pre id="out"></pre></div>
+
+<div id="boot">
+  <div class="eyebrow">mainframe-07 · secure terminal</div>
+  <h1>Programmeer zelf</h1>
+  <div class="sub">kies een kleur en klik op start — daarna ram je op willekeurige toetsen en lijkt het alsof je razendsnel programmeert</div>
+  <div id="themeSwitch">
+    <span class="lbl">kleur</span>
+    <button type="button" data-theme="amber" aria-pressed="true">amber</button>
+    <button type="button" data-theme="green" aria-pressed="false">groen</button>
+  </div>
+  <div class="diff">amber = warme, rustige look van oude monitors · groen = klassieke terminal / Matrix-look</div>
+  <button id="btnStart" type="button">Start</button>
+</div>
+
+<div id="hint" hidden>
+  <span class="t">Begin met typen</span><b>&#9612;</b>
+</div>
+
+<div id="events"></div>
+<div id="verdict" hidden><div class="stamp"></div></div>
+<textarea id="sink" aria-label="typ hier" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
+
+<script>
+(function () {
+  // ---------- de "code" die uit je vingers komt: een verzonnen RAG documenten-vergelijker (LangChain / Streamlit / FAISS) ----------
+  var SRC = [
+"# ----- main.py -- verbindingstest met Azure OpenAI -----",
+"import os",
+"from dotenv import load_dotenv",
+"from langchain_openai import AzureChatOpenAI",
+"from langchain_core.messages import SystemMessage, HumanMessage",
+"",
+"load_dotenv()",
+"",
+"llm = AzureChatOpenAI(",
+"    azure_deployment=os.getenv('OPENAI_GPT_DEPLOYMENT'),",
+"    azure_endpoint=os.getenv('OPENAI_ENDPOINT'),",
+"    api_version=os.getenv('OPENAI_API_VERSION'),",
+"    temperature=0,",
+")",
+"",
+"def test_verbinding() -> bool:",
+"    antwoord = llm.invoke([",
+"        SystemMessage(content='Je bent een beknopte documenten-assistent.'),",
+"        HumanMessage(content='Zeg verbinding-ok als je dit leest.'),",
+"    ])",
+"    print(f'[main] model antwoordde: {antwoord.content!r}')",
+"    return 'ok' in antwoord.content.lower()",
+"",
+"if __name__ == '__main__':",
+"    print('[main] verbinding testen ...')",
+"    print('[main] status:', 'OK' if test_verbinding() else 'MISLUKT')",
+"",
+"# ----- build_index.py -- alle documenten vooraf indexeren in een FAISS-store -----",
+"import os",
+"from pathlib import Path",
+"from pypdf import PdfReader",
+"from langchain_text_splitters import RecursiveCharacterTextSplitter",
+"from langchain_community.vectorstores import FAISS",
+"from langchain_huggingface import HuggingFaceEmbeddings",
+"from langchain_core.documents import Document",
+"",
+"CHUNK_SIZE = 1000",
+"CHUNK_OVERLAP = 150",
+"INDEX_DIR = 'faiss_docs_index'",
+"EMBED_MODEL = 'sentence-transformers/all-MiniLM-L6-v2'",
+"",
+"def laad_pdf(pad: str) -> list:",
+"    reader = PdfReader(pad)",
+"    passages = []",
+"    for nr, pagina in enumerate(reader.pages, start=1):",
+"        tekst = pagina.extract_text() or ''",
+"        if tekst.strip():",
+"            passages.append(Document(page_content=tekst, metadata={'bron': Path(pad).name, 'pagina': nr}))",
+"    print(f'[index] {len(passages)} paginas met tekst geladen uit {pad}')",
+"    return passages",
+"",
+"def bouw_index(map_pad: str) -> None:",
+"    documenten = []",
+"    for pdf in sorted(Path(map_pad).glob('*.pdf')):",
+"        documenten += laad_pdf(str(pdf))",
+"    splitter = RecursiveCharacterTextSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)",
+"    chunks = splitter.split_documents(documenten)",
+"    print(f'[index] {len(chunks)} fragmenten gemaakt (size={CHUNK_SIZE}, overlap={CHUNK_OVERLAP})')",
+"    embeddings = HuggingFaceEmbeddings(model_name=EMBED_MODEL)",
+"    store = FAISS.from_documents(chunks, embeddings)",
+"    store.save_local(INDEX_DIR)",
+"    print(f'[index] FAISS-index opgeslagen in ./{INDEX_DIR}')",
+"",
+"if __name__ == '__main__':",
+"    bouw_index(os.getenv('DOCS_DIR', 'documenten/'))",
+"",
+"# ----- app.py -- Streamlit: vergelijk twee documenten en vind de verschillen -----",
+"import streamlit as st",
+"from langchain_community.vectorstores import FAISS",
+"from langchain_community.retrievers import BM25Retriever",
+"from langchain.retrievers import EnsembleRetriever",
+"from langchain_huggingface import HuggingFaceEmbeddings",
+"from langchain_openai import AzureChatOpenAI",
+"from langchain_core.messages import SystemMessage, HumanMessage",
+"",
+"st.set_page_config(page_title='Documenten-Vergelijker', page_icon='docs')",
+"st.title('Documenten-Vergelijker')",
+"",
+"SYSTEM_PROMPT = (",
+"    'Vergelijk de twee documenten en benoem de belangrijkste verschillen. '",
+"    'Verwijs per verschil naar het document en het paginanummer. '",
+"    'Zijn ze identiek, zeg dan vrolijk dat niemand iets hoeft aan te passen.'",
+")",
+"",
+"@st.cache_resource",
+"def laad_retriever():",
+"    embeddings = HuggingFaceEmbeddings(model_name='sentence-transformers/all-MiniLM-L6-v2')",
+"    store = FAISS.load_local('faiss_docs_index', embeddings, allow_dangerous_deserialization=True)",
+"    dense = store.as_retriever(search_kwargs={'k': 6})",
+"    teksten = [d.page_content for d in store.docstore._dict.values()]",
+"    bm25 = BM25Retriever.from_texts(teksten)",
+"    bm25.k = 6",
+"    return EnsembleRetriever(retrievers=[dense, bm25], weights=[0.6, 0.4])",
+"",
+"def vergelijk(vraag: str) -> str:",
+"    fragmenten = laad_retriever().invoke(vraag)",
+"    context = '\\n\\n'.join(f\"[{d.metadata.get('bron','?')} p.{d.metadata.get('pagina','?')}] {d.page_content}\" for d in fragmenten)",
+"    llm = AzureChatOpenAI(azure_deployment=st.secrets['OPENAI_GPT_DEPLOYMENT'], temperature=0)",
+"    antwoord = llm.invoke([",
+"        SystemMessage(content=SYSTEM_PROMPT),",
+"        HumanMessage(content=f'Vraag: {vraag}\\n\\nFragmenten:\\n{context}'),",
+"    ])",
+"    return antwoord.content",
+"",
+"col_a, col_b = st.columns(2)",
+"doc_a = col_a.file_uploader('Document A', type='pdf')",
+"doc_b = col_b.file_uploader('Document B', type='pdf')",
+"",
+"vraag = st.chat_input('Wat wil je vergelijken tussen de documenten?')",
+"if vraag:",
+"    st.chat_message('user').write(vraag)",
+"    with st.spinner('Documenten vergelijken ...'):",
+"        st.chat_message('assistant').write(vergelijk(vraag))",
+"",
+"$ python -m venv venv && source venv/bin/activate",
+"$ pip install -r requirements.txt",
+"$ python build_index.py",
+"[index] 212 paginas met tekst geladen uit documenten/versie_A.pdf",
+"[index] 208 paginas met tekst geladen uit documenten/versie_B.pdf",
+"[index] 1284 fragmenten gemaakt (size=1000, overlap=150)",
+"[index] FAISS-index opgeslagen in ./faiss_docs_index",
+"$ pip-audit",
+"Geen bekende kwetsbaarheden gevonden",
+"$ streamlit run app.py",
+"  You can now view your Streamlit app in your browser.",
+"  Local URL: http://localhost:8501",
+"[diff] 37 verschillen gevonden tussen versie A en versie B",
+"[diff] grootste verschil op p. 12 -- document B zegt het tegenovergestelde",
+""
+  ].join("\n");
+
+  // ---------- state ----------
+  var out = document.getElementById("out");
+  var cur = document.createElement("span");
+  cur.id = "cur";
+  var pos = 0, nextEvent = 380, lastType = 0, state = "boot";
+  var boot = document.getElementById("boot");
+  var hint = document.getElementById("hint");
+  var btnBack = document.getElementById("btnBack");
+  var speed = document.getElementById("speed");
+  var sink = document.getElementById("sink");
+  var reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var RAIN = "#ffb400", RAIN_FADE = "rgba(12,7,0,0.09)";
+
+  function enterArmed() {           // startscherm -> klaar om te typen
+    state = "armed";
+    boot.classList.add("gone");
+    hint.hidden = false; hint.classList.remove("gone");
+    btnBack.hidden = false;
+  }
+  function backToBoot() {           // terug naar startscherm
+    state = "boot";
+    boot.classList.remove("gone");
+    hint.hidden = true;
+    btnBack.hidden = true;
+    out.textContent = ""; out.appendChild(cur); pos = 0; pending = "";
+  }
+
+  // ---------- thema groen / amber ----------
+  function setTheme(name) {
+    var amber = name === "amber";
+    document.body.classList.toggle("amber", amber);
+    RAIN = amber ? "#ffb400" : "#3dff66";
+    RAIN_FADE = amber ? "rgba(12,7,0,0.09)" : "rgba(3,10,5,0.09)";
+    var btns = document.querySelectorAll("#themeSwitch button");
+    for (var i = 0; i < btns.length; i++) {
+      btns[i].setAttribute("aria-pressed", btns[i].dataset.theme === (amber ? "amber" : "green"));
+    }
+    try { localStorage.setItem("mt-theme", name); } catch (e) {}
+  }
+  var saved = "amber";
+  try { saved = localStorage.getItem("mt-theme") || "amber"; } catch (e) {}
+  setTheme(saved);
+
+  // ---------- veilige, 1-pass highlighter (geen zelf-sloop) ----------
+  function esc(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  var TOKEN = /(#[ \t][^\n]*|\/\/[^\n]*)|("[^"]*"|'[^']*')|\b(import|from|def|class|return|if|elif|else|for|while|in|as|with|try|except|finally|lambda|and|or|not|is|None|True|False|self|print)\b|(\d+\.?\d*)/g;
+  function colorize(chunk) {
+    return esc(chunk).replace(TOKEN, function (m, c, s, k, n) {
+      if (c) return '<span class="c">' + c + "</span>";
+      if (s) return '<span class="s">' + s + "</span>";
+      if (k) return '<span class="k">' + k + "</span>";
+      if (n) return '<span class="n">' + n + "</span>";
+      return m;
+    });
+  }
+
+  var pending = "";
+  function flush() {
+    if (!pending) return;
+    cur.remove();
+    out.insertAdjacentHTML("beforeend", colorize(pending));
+    out.appendChild(cur);
+    pending = "";
+    while (out.childNodes.length > 1500 && out.firstChild && out.firstChild !== cur) {
+      out.removeChild(out.firstChild);
+    }
+  }
+
+  function burst() {
+    if (state === "boot") return;                 // op startscherm doen toetsen niks
+    if (state === "armed") { state = "typing"; hint.classList.add("gone"); }
+    lastType = Date.now();
+    var step = parseInt(speed.value, 10) || 4;
+    var count = 2 + Math.round(Math.random() * step * 2.2);
+    for (var i = 0; i < count; i++) {
+      pending += SRC[pos++];
+      if (pos >= SRC.length) pos = 0;
+    }
+    flush();
+    nextEvent -= count;
+    if (nextEvent <= 0) {
+      nextEvent = 300 + Math.floor(Math.random() * 400);
+      randomEvent();
+    }
+  }
+
+  // ---------- sfeer-toasts (RAG / documenten-vergelijker-stijl) ----------
+  var EVENTS = [
+    { cls: "",     text: "FAISS-index opgebouwd (1.284 fragmenten)", bar: true },
+    { cls: "cyan", text: "embeddings geladen: all-MiniLM-L6-v2", bar: true },
+    { cls: "",     text: "hybrid search: FAISS + BM25 (0.6 / 0.4)", bar: false },
+    { cls: "cyan", text: "doc A vs doc B: 37 verschillen gevonden", bar: true },
+    { cls: "warn", text: "document B spreekt A tegen op p. 12", bar: false },
+    { cls: "",     text: "Azure OpenAI verbonden (temperature=0)", bar: false },
+    { cls: "cyan", text: "diff gegenereerd in 1.8 s", bar: false },
+    { cls: "",     text: "171 identieke paginas overgeslagen", bar: false },
+    { cls: "",     text: "pip-audit: 0 kwetsbaarheden", bar: false }
+  ];
+  function randomEvent() {
+    var e = EVENTS[Math.floor(Math.random() * EVENTS.length)];
+    var box = document.getElementById("events");
+    var el = document.createElement("div");
+    el.className = "ev " + e.cls;
+    el.textContent = e.text;
+    var fill;
+    if (e.bar && !reduce) {
+      var t = document.createElement("div"); t.className = "track";
+      fill = document.createElement("div"); fill.className = "fill";
+      t.appendChild(fill); el.appendChild(t);
+    }
+    box.appendChild(el);
+    if (fill) {
+      var pct = 0;
+      var iv = setInterval(function () {
+        pct = Math.min(100, pct + 8 + Math.random() * 20);
+        fill.style.width = pct + "%";
+        if (pct >= 100) clearInterval(iv);
+      }, 110);
+    }
+    setTimeout(function () {
+      el.style.transition = "opacity .5s";
+      el.style.opacity = "0";
+      setTimeout(function () { el.remove(); }, 500);
+    }, 3200);
+  }
+
+  // ---------- grote stempel ----------
+  function stamp(kind, text) {
+    var v = document.getElementById("verdict");
+    v.className = kind;
+    v.querySelector(".stamp").textContent = text;
+    v.hidden = false;
+    clearTimeout(stamp._t);
+    stamp._t = setTimeout(function () { v.hidden = true; }, 1500);
+  }
+
+  // ---------- input ----------
+  document.addEventListener("keydown", function (e) {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (state === "boot") return;                 // startscherm: toetsen negeren
+    if (e.key === "Tab" || e.key === "F5" || e.key === "F11" || e.key === "F12") return;
+    e.preventDefault();
+    burst();
+  });
+  document.addEventListener("pointerdown", function (e) {
+    if (e.target.closest("#bar") || e.target.closest("#boot")) return;
+    if (state === "boot") return;
+    sink.focus({ preventScroll: true });
+    burst();
+  });
+  sink.addEventListener("input", function () { sink.value = ""; });
+
+  // thema-knoppen
+  var sw = document.querySelectorAll("#themeSwitch button");
+  for (var j = 0; j < sw.length; j++) {
+    sw[j].addEventListener("click", function () { setTheme(this.dataset.theme); });
+  }
+  document.getElementById("btnTheme").addEventListener("click", function () {
+    setTheme(document.body.classList.contains("amber") ? "green" : "amber");
+  });
+
+  document.getElementById("btnStart").addEventListener("click", enterArmed);
+  document.getElementById("btnBack").addEventListener("click", backToBoot);
+  document.getElementById("btnOk").addEventListener("click", function () { stamp("ok", "COMPILED"); });
+  document.getElementById("btnBad").addEventListener("click", function () { stamp("warn", "DEPLOYED"); });
+  document.getElementById("btnClr").addEventListener("click", function () {
+    out.textContent = ""; out.appendChild(cur); pos = 0; pending = "";
+    if (state === "typing") { state = "armed"; hint.hidden = false; hint.classList.remove("gone"); }
+  });
+
+  out.appendChild(cur);
+
+  // ---------- nep-statusbalk ----------
+  var t0 = Date.now();
+  document.getElementById("pid").textContent = 1000 + Math.floor(Math.random() * 60000);
+  setInterval(function () {
+    var s = Math.floor((Date.now() - t0) / 1000);
+    var hh = String(Math.floor(s / 3600)).padStart(2, "0");
+    var mm = String(Math.floor(s / 60) % 60).padStart(2, "0");
+    var ss = String(s % 60).padStart(2, "0");
+    document.getElementById("up").textContent = hh + ":" + mm + ":" + ss;
+    document.getElementById("cpu").textContent = (8 + Math.floor(Math.random() * 80)) + "%";
+    document.getElementById("mem").textContent = (3.2 + Math.random() * 2.4).toFixed(1) + "G";
+    var busy = Date.now() - lastType < 1500;
+    document.getElementById("net").textContent = busy ? (40 + Math.floor(Math.random() * 900)) + " kB/s" : "idle";
+  }, 900);
+
+  // ---------- Matrix-achtige code-rain op canvas ----------
+  var cv = document.getElementById("rain"), cx = cv.getContext("2d");
+  var cols, drops, glyphs = "01{}[]()<>=+-*/;$#&|!?abcdef0123456789λΣΔπ".split("");
+  function resize() {
+    cv.width = innerWidth; cv.height = innerHeight;
+    cols = Math.floor(cv.width / 14);
+    drops = new Array(cols).fill(0).map(function () { return Math.random() * -50; });
+  }
+  resize();
+  addEventListener("resize", resize);
+  function rain() {
+    cx.fillStyle = RAIN_FADE;
+    cx.fillRect(0, 0, cv.width, cv.height);
+    cx.fillStyle = RAIN;
+    cx.font = "13px monospace";
+    for (var i = 0; i < cols; i++) {
+      var ch = glyphs[Math.floor(Math.random() * glyphs.length)];
+      cx.fillText(ch, i * 14, drops[i] * 14);
+      if (drops[i] * 14 > cv.height && Math.random() > 0.975) drops[i] = 0;
+      drops[i]++;
+    }
+  }
+  if (!reduce) setInterval(rain, 60);
+})();
+</script>
+</body>
+</html>
